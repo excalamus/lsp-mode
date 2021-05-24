@@ -230,15 +230,19 @@ If REGION is non-nil, it will request tokens only for given region
 otherwise it will request for whole document.
 If FONTIFY-IMMEDIATELY is non-nil, it will fontify when receive the response
 ignoring the timer."
-  (let ((request-full-token-set
-         (lambda (fontify-immediately)
-           (when lsp--semantic-tokens-idle-timer
-             (cancel-timer lsp--semantic-tokens-idle-timer))
-           (setq lsp--semantic-tokens-idle-timer
-                 (run-with-idle-timer
-                  lsp-idle-delay
-                  nil
-                  (lambda () (lsp--semantic-tokens-request nil fontify-immediately)))))))
+  (let* ((semantic-tokenizing-buffer (current-buffer))
+         (request-full-token-set
+          (lambda (fontify-immediately)
+            (when lsp--semantic-tokens-idle-timer
+              (cancel-timer lsp--semantic-tokens-idle-timer))
+            (setq lsp--semantic-tokens-idle-timer
+                  (run-with-idle-timer
+                   lsp-idle-delay
+                   nil
+                   (lambda ()
+                     (when (buffer-live-p semantic-tokenizing-buffer)
+                       (with-current-buffer semantic-tokenizing-buffer
+                         (lsp--semantic-tokens-request nil fontify-immediately)))))))))
     (when lsp--semantic-tokens-idle-timer
       (cancel-timer lsp--semantic-tokens-idle-timer))
     (lsp-request-async
@@ -378,6 +382,23 @@ IS-RANGE-PROVIDER is non-nil when server supports range requests."
                        (lsp-warn "No face has been associated to the %s '%s': consider adding a corresponding definition to %s"
                                  category id varname)) maybe-face)) identifiers)))
 
+(defun lsp-semantic-tokens--replace-alist-values (a b)
+  "Replace alist A values with B ones where available."
+  (-map
+   (-lambda ((ak . av))
+     (cons ak (alist-get ak b av nil #'string=)))
+   a))
+
+(defun lsp-semantic-tokens--type-faces-for (client)
+  "Return the semantic token type faces for CLIENT."
+  (lsp-semantic-tokens--replace-alist-values lsp-semantic-token-faces
+                                     (plist-get (lsp--client-semantic-tokens-faces-overrides client) :types)))
+
+(defun lsp-semantic-tokens--modifier-faces-for (client)
+  "Return the semantic token type faces for CLIENT."
+  (lsp-semantic-tokens--replace-alist-values lsp-semantic-token-modifier-faces
+                                     (plist-get (lsp--client-semantic-tokens-faces-overrides client) :modifiers)))
+
 ;;;###autoload
 (defun lsp--semantic-tokens-initialize-workspace (workspace)
   "Initialize semantic tokens for WORKSPACE."
@@ -389,15 +410,16 @@ IS-RANGE-PROVIDER is non-nil when server supports range requests."
                  (lsp--registered-capability-options))
                (lsp:server-capabilities-semantic-tokens-provider?
                 (lsp--workspace-server-capabilities workspace)))))
-    (-let* (((&SemanticTokensOptions :legend) token-capabilities))
+    (-let* (((&SemanticTokensOptions :legend) token-capabilities)
+            (client (lsp--workspace-client workspace)))
       (setf (lsp--workspace-semantic-tokens-faces workspace)
             (lsp--semantic-tokens-build-face-map (lsp:semantic-tokens-legend-token-types legend)
-                                                 lsp-semantic-token-faces
+                                                 (lsp-semantic-tokens--type-faces-for client)
                                                  "semantic token"
                                                  "lsp-semantic-token-faces"))
       (setf (lsp--workspace-semantic-tokens-modifier-faces workspace)
             (lsp--semantic-tokens-build-face-map (lsp:semantic-tokens-legend-token-modifiers legend)
-                                                 lsp-semantic-token-modifier-faces
+                                                 (lsp-semantic-tokens--modifier-faces-for client)
                                                  "semantic token modifier"
                                                  "lsp-semantic-token-modifier-faces")))))
 
