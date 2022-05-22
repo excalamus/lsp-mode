@@ -40,7 +40,13 @@
   "The path to the file in which `eslint' will be stored."
   :type 'file
   :group 'lsp-eslint
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
+
+(defcustom lsp-eslint-download-url "https://github.com/emacs-lsp/lsp-server-binaries/blob/master/dbaeumer.vscode-eslint-2.2.2.vsix?raw=true"
+  "Eslint language server download url."
+  :type 'string
+  :group 'lsp-eslint
+  :package-version '(lsp-mode . "8.0.1"))
 
 (defcustom lsp-eslint-server-command `("node"
                                        "~/server/out/eslintServer.js"
@@ -76,7 +82,7 @@
 (defcustom lsp-eslint-node "node"
   "Path to nodejs."
   :type 'file
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-eslint-options nil
   "The eslint options object to provide args normally passed to
@@ -99,8 +105,7 @@
   :type 'boolean
   :package-version '(lsp-mode . "6.3"))
 
-(defcustom lsp-eslint-fix-all-problem-type
-  "all"
+(defcustom lsp-eslint-fix-all-problem-type "all"
   "Determines which problems are fixed when running the
 source.fixAll code action."
   :type '(choice
@@ -119,10 +124,10 @@ source.fixAll code action."
   :type 'lsp-string-vector
   :package-version '(lsp-mode . "6.3"))
 
-(defcustom lsp-eslint-validate ["javascript" "javascriptreact"]
-  "An array of language ids which should be validated by ESLint"
-  :type 'lsp-string-vector
-  :package-version '(lsp-mode . "6.3"))
+(defcustom lsp-eslint-validate '("svelte")
+  "An array of language ids which should always be validated by eslint."
+  :type '(repeat string)
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-eslint-provide-lint-task nil
   "Controls whether a task for linting the whole workspace will be available."
@@ -145,14 +150,58 @@ workspace (see https://eslint.org/docs/user-guide/command-line-interface)."
   :type '(repeat string)
   :package-version '(lsp-mode . "6.3"))
 
-(defcustom lsp-eslint-code-action-disable-rule-comment '((enable . t) (location . "separateLine"))
-  ""
-  :type 'alist
+(defcustom lsp-eslint-code-action-disable-rule-comment t
+  "Controls whether code actions to add a rule-disabling comment should be shown."
+  :type 'bool
   :package-version '(lsp-mode . "6.3"))
 
-(defcustom lsp-eslint-code-action-show-documentation '((enable . t))
-  ""
-  :type 'alist)
+(defcustom lsp-eslint-code-action-disable-rule-comment-location "separateLine"
+  "Controls where the disable rule code action places comments.
+
+Accepts the following values:
+- \"separateLine\": Add the comment above the line to be disabled (default).
+- \"sameLine\": Add the comment on the same line that will be disabled."
+  :type '(choice
+          (const "separateLine")
+          (const "sameLine"))
+  :package-version '(lsp-mode . "8.0.0"))
+
+(defcustom lsp-eslint-code-action-show-documentation t
+  "Controls whether code actions to show documentation for an eslint rule should
+be shown."
+  :type 'bool
+  :package-version '(lsp-mode . "8.0.0"))
+
+(defcustom lsp-eslint-warn-on-ignored-files nil
+  "Controls whether a warning should be emitted when a file is ignored."
+  :type 'bool
+  :package-version '(lsp-mode . "8.0.0"))
+
+(defcustom lsp-eslint-rules-customizations []
+  "Controls severity overrides for eslint rules.
+
+The value is a vector of alists, with each alist containing the following keys:
+- rule - The rule to match. Can match wildcards with *, or be prefixed with !
+  to negate the match.
+- severity - The severity to report this rule as. Can be one of the following:
+  - \"off\": Disable the rule.
+  - \"info\": Report as informational.
+  - \"warn\": Report as a warning.
+  - \"error\": Report as an error.
+  - \"upgrade\": Increase by 1 severity level (eg. warning -> error).
+  - \"downgrade\": Decrease by 1 severity level (eg. warning -> info).
+  - \"default\": Report as the same severity specified in the eslint config."
+  :type '(lsp-repeatable-vector
+          (alist :options ((rule string)
+                           (severity (choice
+                                      (const "off")
+                                      (const "info")
+                                      (const "warn")
+                                      (const "error")
+                                      (const "upgrade")
+                                      (const "downgrade")
+                                      (const "default"))))))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-eslint-experimental-incremental-sync t
   "Controls whether the new incremental text document synchronization should
@@ -164,13 +213,13 @@ be used."
   "Controls whether to remember choices made to permit or deny ESLint libraries
 from running."
   :type 'boolean
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-eslint-library-choices-file (expand-file-name (locate-user-emacs-file ".lsp-eslint-choices"))
   "The file where choices to permit or deny ESLint libraries from running is
 stored."
   :type 'string
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defun lsp--find-eslint ()
   (or
@@ -211,24 +260,25 @@ stored."
                                (buffer (find-buffer-visiting file))
                                (workspace-folder (lsp-find-session-folder (lsp-session) file)))
                     (with-current-buffer buffer
-                      (list :validate "probe"
+                      (list :validate (if (member (lsp-buffer-language) lsp-eslint-validate) "on" "probe")
                             :packageManager lsp-eslint-package-manager
-                            :codeActionOnSave (list :enable t
+                            :codeAction (list
+                                         :disableRuleComment (list
+                                                              :enable (lsp-json-bool lsp-eslint-code-action-disable-rule-comment)
+                                                              :location lsp-eslint-code-action-disable-rule-comment-location)
+                                         :showDocumentation (list
+                                                             :enable (lsp-json-bool lsp-eslint-code-action-show-documentation)))
+                            :codeActionOnSave (list :enable (lsp-json-bool lsp-eslint-auto-fix-on-save)
                                                     :mode lsp-eslint-fix-all-problem-type)
                             :format (lsp-json-bool lsp-eslint-format)
-                            :options (or lsp-eslint-options (ht))
-                            :run (or lsp-eslint-run "onType")
-                            :nodePath lsp-eslint-node-path
-                            :onIgnoredFiles "off"
                             :quiet (lsp-json-bool lsp-eslint-quiet)
+                            :onIgnoredFiles (if lsp-eslint-warn-on-ignored-files "warn" "off")
+                            :options (or lsp-eslint-options (ht))
+                            :rulesCustomizations lsp-eslint-rules-customizations
+                            :run lsp-eslint-run
+                            :nodePath lsp-eslint-node-path
                             :workspaceFolder (list :uri (lsp--path-to-uri workspace-folder)
-                                                   :name (f-filename workspace-folder))
-                            :codeAction (list
-                                         :disableRuleComment (or lsp-eslint-code-action-disable-rule-comment
-                                                                 (list :enable t
-                                                                       :location "separateLine"))
-                                         :showDocumentation (or lsp-eslint-code-action-show-documentation
-                                                                (list :enable t))))))))
+                                                   :name (f-filename workspace-folder)))))))
        (apply #'vector)))
 
 (lsp-defun lsp-eslint--open-doc (_workspace (&eslint:OpenESLintDocParams :url))
@@ -285,7 +335,9 @@ to allow or deny it.")
            (remembered-answer (gethash library-path lsp-eslint--stored-libraries)))
       (funcall callback remembered-answer)
     (lsp-ask-question
-     (format "Allow lsp-mode to execute %s?" library-path)
+     (format
+      "Allow lsp-mode to execute %s? Note: The latest versions of the ESLint language server no longer create this prompt."
+      library-path)
      (mapcar 'car option-alist)
      (lambda (response)
        (let ((option (cdr (assoc response option-alist))))
@@ -308,9 +360,10 @@ to allow or deny it.")
   :activation-fn (lambda (filename &optional _)
                    (when lsp-eslint-enable
                      (or (string-match-p (rx (one-or-more anything) "."
-                                             (or "ts" "js" "jsx" "tsx" "html" "vue")eos)
+                                             (or "ts" "js" "jsx" "tsx" "html" "vue" "svelte")eos)
                                          filename)
-                         (derived-mode-p 'js-mode 'js2-mode 'typescript-mode 'html-mode))))
+                         (and (derived-mode-p 'js-mode 'js2-mode 'typescript-mode 'html-mode 'svelte-mode)
+                           (not (string-match-p "\\.json\\'" filename))))))
   :priority -1
   :completion-in-comments? t
   :add-on? t
@@ -346,8 +399,10 @@ to allow or deny it.")
                                    (funcall callback))
                                (error (funcall error-callback err))))
                            error-callback
-                           :url (lsp-vscode-extension-url "dbaeumer" "vscode-eslint" "2.1.14")
+                           :url lsp-eslint-download-url
                            :store-path tmp-zip)))))
+
+(lsp-consistency-check lsp-eslint)
 
 (provide 'lsp-eslint)
 ;;; lsp-eslint.el ends here

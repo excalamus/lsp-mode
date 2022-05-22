@@ -71,6 +71,12 @@ ignored."
   :type 'boolean
   :group 'lsp-completion)
 
+(defcustom lsp-completion-show-label-description t
+  "Whether or not to show description of completion candidates."
+  :type 'boolean
+  :group 'lsp-completion
+  :package-version '(lsp-mode . "8.0.1"))
+
 (defcustom lsp-completion-no-cache nil
   "Whether or not caching the returned completions from server."
   :type 'boolean
@@ -87,14 +93,14 @@ ignored."
   "Whether or not filter initial results from server."
   :type 'boolean
   :group 'lsp-completion
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-completion-use-last-result t
   "Temporarily use last server result when interrupted by keyboard.
 This will help minimize popup flickering issue in `company-mode'."
   :type 'boolean
   :group 'lsp-completion
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defconst lsp-completion--item-kind
   [nil
@@ -132,8 +138,17 @@ This will help minimize popup flickering issue in `company-mode'."
   "Dont do client-side reordering completion items when set.")
 
 (declare-function company-mode "ext:company")
-(declare-function company-doc-buffer "ext:company")
 (declare-function yas-expand-snippet "ext:yasnippet")
+
+(defun lsp-doc-buffer (&optional string)
+  (with-current-buffer (get-buffer-create "*lsp-documentation*")
+    (erase-buffer)
+    (fundamental-mode)
+    (when string
+      (save-excursion
+        (insert string)
+        (visual-line-mode)))
+    (current-buffer)))
 
 (defun lsp-falsy? (val)
   "Non-nil if VAL is falsy."
@@ -155,10 +170,13 @@ This will help minimize popup flickering issue in `company-mode'."
 
 (defun lsp-completion--annotate (item)
   "Annotate ITEM detail."
-  (-let (((&CompletionItem :detail? :kind?) (plist-get (text-properties-at 0 item)
+  (-let (((&CompletionItem :detail? :kind? :label-details?) (plist-get (text-properties-at 0 item)
                                                        'lsp-completion-item)))
     (concat (when (and lsp-completion-show-detail detail?)
               (concat " " (s-replace "\r" "" detail?)))
+            (when (and lsp-completion-show-label-description label-details?)
+              (when-let ((description (and label-details? (lsp:label-details-description label-details?))))
+                (format " %s" description)))
             (when lsp-completion-show-kind
               (when-let ((kind-name (and kind? (aref lsp-completion--item-kind kind?))))
                 (format " (%s)" kind-name))))))
@@ -198,7 +216,7 @@ KEEP-LAST-RESULT if specified."
           (const :insert :tag "Default completion inserts")
           (const :replace :tag "Default completion replaces"))
   :group 'lsp-mode
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (lsp-defun lsp-completion--guess-prefix ((item &as &CompletionItem :text-edit?))
   "Guess ITEM's prefix start point according to following heuristics:
@@ -319,6 +337,13 @@ The MARKERS and PREFIX value will be attached to each candidate."
   (alist-get (lsp:completion-item-kind? (get-text-property 0 'lsp-completion-item item))
              lsp-completion--kind->symbol))
 
+(defun lsp-completion--candidate-deprecated (item)
+  "Return if ITEM is deprecated."
+  (let ((completion-item (get-text-property 0 'lsp-completion-item item)))
+    (or (lsp:completion-item-deprecated? completion-item)
+        (seq-position (lsp:completion-item-tags? completion-item)
+                      lsp/completion-item-tag-deprecated))))
+
 (defun lsp-completion--company-match (candidate)
   "Return highlight of typed prefix inside CANDIDATE."
   (let* ((prefix (downcase
@@ -370,10 +395,10 @@ The MARKERS and PREFIX value will be attached to each candidate."
 
 (defun lsp-completion--get-context (trigger-characters)
   "Get completion context with provided TRIGGER-CHARACTERS."
-  (let* ((triggered-by-char (equal last-command 'self-insert-command))
+  (let* ((triggered-by-char non-essential)
          (trigger-char (when triggered-by-char
-                           (lsp-completion--looking-back-trigger-characterp
-                            trigger-characters)))
+                         (lsp-completion--looking-back-trigger-characterp
+                          trigger-characters)))
          (trigger-kind (cond
                         (trigger-char
                          lsp/completion-trigger-kind-trigger-character)
@@ -485,12 +510,13 @@ The MARKERS and PREFIX value will be attached to each candidate."
       (list
        bounds-start
        (point)
-       (lambda (probe _pred action)
+       (lambda (probe pred action)
          (cond
           ;; metadata
           ((equal action 'metadata)
            `(metadata (category . lsp-capf)
-                      (display-sort-function . identity)))
+                      (display-sort-function . identity)
+                      (cycle-sort-function . identity)))
           ;; boundaries
           ((equal (car-safe action) 'boundaries) nil)
           ;; try-completion
@@ -501,16 +527,18 @@ The MARKERS and PREFIX value will be attached to each candidate."
           ;; always be shown
           ((equal action 'lambda) nil)
           ;; retrieve candidates
-          ((equal action t) (funcall candidates))))
+          ((equal action t)
+           (all-completions probe (funcall candidates) pred))))
        :annotation-function #'lsp-completion--annotate
        :company-kind #'lsp-completion--candidate-kind
+       :company-deprecated #'lsp-completion--candidate-deprecated
        :company-require-match 'never
        :company-prefix-length
        (save-excursion
          (goto-char bounds-start)
          (and (lsp-completion--looking-back-trigger-characterp trigger-chars) t))
        :company-match #'lsp-completion--company-match
-       :company-doc-buffer (-compose #'company-doc-buffer
+       :company-doc-buffer (-compose #'lsp-doc-buffer
                                      #'lsp-completion--get-documentation)
        :exit-function
        (-rpartial #'lsp-completion--exit-fn candidates)))))
@@ -530,8 +558,7 @@ Others: CANDIDATES"
                        'lsp-completion-prefix prefix)
                (text-properties-at 0 candidate))
               ((&CompletionItem? :label :insert-text? :text-edit? :insert-text-format?
-                                 :additional-text-edits? :keep-whitespace?
-                                 :command?)
+                                 :additional-text-edits? :insert-text-mode? :command?)
                item))
         (cond
          (text-edit?
@@ -553,12 +580,11 @@ Others: CANDIDATES"
           (delete-region start-point (point))
           (insert (or (unless (lsp-falsy? insert-text?) insert-text?) label))))
 
+        (lsp--indent-lines start-point (point) insert-text-mode?)
         (when (equal insert-text-format? lsp/insert-text-format-snippet)
           (lsp--expand-snippet (buffer-substring start-point (point))
                                start-point
-                               (point)
-                               nil
-                               keep-whitespace?))
+                               (point)))
 
         (when lsp-completion-enable-additional-text-edit
           (if (or (get-text-property 0 'lsp-completion-resolved candidate)
@@ -717,6 +743,10 @@ The CLEANUP-FN will be called to cleanup."
   "Disable LSP completion support."
   (lsp-completion-mode -1))
 
+(defun lsp-completion-passthrough-all-completions (_string table pred _point)
+  "Like `completion-basic-all-completions' but have prefix ignored."
+  (completion-basic-all-completions "" table pred 0))
+
 ;;;###autoload
 (define-minor-mode lsp-completion-mode
   "Toggle LSP completion support."
@@ -733,8 +763,13 @@ The CLEANUP-FN will be called to cleanup."
      (lsp-completion-mode
       (setq-local completion-at-point-functions nil)
       (add-hook 'completion-at-point-functions #'lsp-completion-at-point nil t)
-      (setq-local completion-category-defaults
-                  (add-to-list 'completion-category-defaults '(lsp-capf (styles basic))))
+      (make-local-variable 'completion-category-defaults)
+      (setf (alist-get 'lsp-capf completion-category-defaults) '((styles . (lsp-passthrough))))
+      (make-local-variable 'completion-styles-alist)
+      (setf (alist-get 'lsp-passthrough completion-styles-alist)
+            '(completion-basic-try-completion
+              lsp-completion-passthrough-all-completions
+              "Passthrough completion."))
 
       (cond
        ((equal lsp-completion-provider :none))
@@ -760,6 +795,8 @@ The CLEANUP-FN will be called to cleanup."
       (remove-hook 'completion-at-point-functions #'lsp-completion-at-point t)
       (setq-local completion-category-defaults
                   (cl-remove 'lsp-capf completion-category-defaults :key #'cl-first))
+      (setq-local completion-styles-alist
+                  (cl-remove 'lsp-passthrough completion-styles-alist :key #'cl-first))
       (remove-hook 'lsp-unconfigure-hook #'lsp-completion--disable t)
       (when (featurep 'company)
         (remove-hook 'company-completion-started-hook
@@ -774,6 +811,8 @@ The CLEANUP-FN will be called to cleanup."
                                 (when (and lsp-auto-configure
                                            lsp-completion-enable)
                                   (lsp-completion--enable))))
+
+(lsp-consistency-check lsp-completion)
 
 (provide 'lsp-completion)
 ;;; lsp-completion.el ends here

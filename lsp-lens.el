@@ -34,12 +34,12 @@
   :group 'lsp-lens
   :type 'number)
 
-(defcustom lsp-lens-place-position 'above-line
+(defcustom lsp-lens-place-position 'end-of-line
   "The position to place lens relative to returned lens position."
   :group 'lsp-lens
   :type '(choice (const above-line)
                  (const end-of-line))
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defface lsp-lens-mouse-face
   '((t :height 0.8 :inherit link))
@@ -95,7 +95,7 @@ Results are meaningful only if FROM and TO are on the same line."
     (save-excursion
       (goto-char (overlay-start ov))
       (if (eq 'end-of-line lsp-lens-place-position)
-          (overlay-put ov 'after-string (concat " " str))
+          (overlay-put ov 'after-string (propertize (concat " " str) 'cursor t))
         (overlay-put ov 'before-string (concat str "\n")))
       (overlay-put ov 'lsp-original str))))
 
@@ -309,6 +309,25 @@ CALLBACK - callback for the lenses."
           (funcall callback lsp-lens--backend-cache lsp--cur-version)
         (lsp-lens--backend-fetch-missing lsp-lens--backend-cache callback lsp--cur-version)))))
 
+(defun lsp-lens--refresh-buffer ()
+  "Trigger lens refresh on buffer."
+  (remove-hook 'lsp-on-idle-hook #'lsp-lens--refresh-buffer t)
+  (when (bound-and-true-p lsp-lens-mode)
+    (lsp-lens-refresh t)))
+
+(defun lsp--lens-on-refresh (workspace)
+  "Clear lens within all buffers of WORKSPACE, refreshing all workspace buffers."
+  (cl-assert (not (eq nil workspace)))
+  (->> (lsp--workspace-buffers workspace)
+       (mapc (lambda (buffer)
+               (lsp-with-current-buffer buffer
+                 (if (lsp--buffer-visible-p)
+                     (when (bound-and-true-p lsp-lens-mode)
+                       (lsp-lens-refresh t))
+                   (progn
+                     (add-hook 'lsp-on-idle-hook #'lsp-lens--refresh-buffer nil t)
+                     (lsp--idle-reschedule (current-buffer)))))))))
+
 ;;;###autoload
 (defun lsp-lens--enable ()
   "Enable lens mode."
@@ -385,6 +404,9 @@ CALLBACK - callback for the lenses."
   (unless lsp-lens--overlays
     (user-error "No lenses in current buffer"))
   (let* ((avy-action 'identity)
+         (position (if (eq lsp-lens-place-position 'end-of-line)
+                       'after-string
+                     'before-string))
          (action (cl-third
                   (avy-process
                    (-mapcat
@@ -399,7 +421,7 @@ CALLBACK - callback for the lenses."
                      (let* ((path (mapcar #'avy--key-to-char path))
                             (str (propertize (string (car (last path)))
                                              'face 'avy-lead-face))
-                            (old-str (overlay-get ov 'before-string))
+                            (old-str (overlay-get ov position))
                             (old-str-tokens (s-split "|" old-str))
                             (old-token (seq-elt old-str-tokens index))
                             (tokens `(,@(-take index old-str-tokens)
@@ -409,15 +431,18 @@ CALLBACK - callback for the lenses."
                                          (concat str old-token))
                                       ,@(-drop (1+ index) old-str-tokens)))
                             (new-str (s-join (propertize "|" 'face 'lsp-lens-face) tokens))
-                            (new-str (if (s-ends-with? "\n" new-str)
+                            (new-str (if (or (s-ends-with? "\n" new-str)
+                                             (eq lsp-lens-place-position 'end-of-line))
                                          new-str
                                        (concat new-str "\n"))))
-                       (overlay-put ov 'before-string new-str)))
+                       (overlay-put ov position new-str)))
                    (lambda ()
-                     (--map (overlay-put it 'before-string
+                     (--map (overlay-put it position
                                          (overlay-get it 'lsp-original))
                             lsp-lens--overlays))))))
     (when action (funcall-interactively action))))
+
+(lsp-consistency-check lsp-lens)
 
 (provide 'lsp-lens)
 ;;; lsp-lens.el ends here

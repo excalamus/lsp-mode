@@ -1,6 +1,6 @@
 ;;; lsp-elixir.el --- description -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2020 emacs-lsp maintainers
+;; Copyright (C) 2021 emacs-lsp maintainers
 
 ;; Author: emacs-lsp maintainers
 ;; Keywords: lsp, elixir
@@ -31,7 +31,7 @@
   "Run ElixirLS's rapid Dialyzer when code is saved."
   :type 'boolean
   :group 'lsp-elixir
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-elixir-dialyzer-warn-opts '()
   "Dialyzer options to enable or disable warnings.
@@ -40,25 +40,25 @@ See Dialyzer's documentation for options. Note that the \"race_conditions\"
 option is unsupported"
   :type '(repeat string)
   :group 'lsp-elixir
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-elixir-dialyzer-format "dialyxir_long"
   "Formatter to use for Dialyzer warnings."
   :type 'string
   :group 'lsp-elixir
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-elixir-mix-env "test"
   "Mix environment to use for compilation."
   :type 'string
   :group 'lsp-elixir
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-elixir-mix-target nil
   "Mix target to use for compilation (requires Elixir >= 1.8)."
   :type 'string
   :group 'lsp-elixir
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-elixir-project-dir nil
   "Subdirectory containing Mix project if not in the project root.
@@ -66,26 +66,26 @@ option is unsupported"
 If value is `\"\"` then defaults to the workspace rootUri."
   :type 'string
   :group 'lsp-elixir
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-elixir-fetch-deps t
   "Automatically fetch project dependencies when compiling."
   :type 'boolean
   :group 'lsp-elixir
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-elixir-suggest-specs t
   "Suggest @spec annotations inline using Dialyzer's inferred success typings.
 This requires Dialyzer."
   :type 'boolean
   :group 'lsp-elixir
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-elixir-signature-after-complete t
   "Show signature help after confirming autocomplete."
   :type 'boolean
   :group 'lsp-elixir
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defgroup lsp-elixir nil
   "LSP support for Elixir, using elixir-ls."
@@ -103,13 +103,42 @@ This requires Dialyzer."
 Leave as default to let `executable-find' search for it."
   :group 'lsp-elixir
   :type '(repeat string)
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
+
+(defcustom lsp-elixir-ls-version "v0.9.0"
+  "Elixir-Ls version to download.
+It has to be set before `lsp-elixir.el' is loaded and it has to
+be available here: https://github.com/elixir-lsp/elixir-ls/releases/"
+  :type 'string
+  :group 'lsp-elixir
+  :package-version '(lsp-mode . "8.0.1"))
+
+(defcustom lsp-elixir-ls-download-url
+  (format "https://github.com/elixir-lsp/elixir-ls/releases/download/%s/elixir-ls.zip"
+          lsp-elixir-ls-version)
+  "Automatic download url for elixir-ls"
+  :type 'string
+  :group 'lsp-elixir
+  :package-version '(lsp-mode . "8.0.1"))
+
+
+(defconst lsp-elixir-ls-server-dir
+  (f-join lsp-server-install-dir "elixir-ls")
+  "Elixir-ls local server Directory.")
+
+(defcustom lsp-elixir-local-server-command
+  (f-join lsp-elixir-ls-server-dir
+          (cl-first lsp-elixir-server-command))
+  "Command to start local elixir-ls binary."
+  :group 'lsp-elixir
+  :type '(repeat string)
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-elixir-enable-test-lenses t
   "Suggest Tests."
   :type 'boolean
   :group 'lsp-elixir
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defun lsp-elixir--build-test-command (argument)
   "Builds the test command from the ARGUMENT."
@@ -132,8 +161,13 @@ Leave as default to let `executable-find' search for it."
              " --no-color"))
     file-path))
 
-(lsp-dependency 'elixir-ls
-                '(:system "elixir-ls"))
+(lsp-dependency
+ 'elixir-ls
+ `(:download :url lsp-elixir-ls-download-url
+             :decompress :zip
+             :store-path ,(f-join lsp-server-install-dir "elixir-ls" "elixir-ls.zip")
+             :binary-path lsp-elixir-server-command
+             :set-executable? t))
 
 (lsp-register-custom-settings
  '(("elixirLS.dialyzerEnabled" lsp-elixir-dialyzer-enabled t)
@@ -150,14 +184,19 @@ Leave as default to let `executable-find' search for it."
 (lsp-register-client
  (make-lsp-client :new-connection (lsp-stdio-connection
                                    (lambda ()
-                                     `(,(or (executable-find
-                                            (cl-first lsp-elixir-server-command))
-                                           (lsp-package-path 'elixir-ls))
+                                     `(,(or (when (f-exists? lsp-elixir-local-server-command)
+                                              lsp-elixir-local-server-command)
+                                            (or (executable-find
+                                                 (cl-first lsp-elixir-server-command))
+                                                (lsp-package-path 'elixir-ls))
+                                            "language_server.bat")
                                        ,@(cl-rest lsp-elixir-server-command))))
                   :major-modes '(elixir-mode)
                   :priority -1
                   :server-id 'elixir-ls
                   :action-handlers (ht ("elixir.lens.test.run" 'lsp-elixir--run-test))
+                  :download-server-fn (lambda (_client callback error-callback _update?)
+                                        (lsp-package-ensure 'elixir-ls callback error-callback))
                   :initialized-fn (lambda (workspace)
                                     (with-lsp-workspace workspace
                                       (lsp--set-configuration
@@ -167,6 +206,8 @@ Leave as default to let `executable-find' search for it."
                                      (ht ("save" t)
                                          ("change" 2))
                                      (lsp--workspace-server-capabilities workspace)))))
+
+(lsp-consistency-check lsp-elixir)
 
 (provide 'lsp-elixir)
 ;;; lsp-elixir.el ends here

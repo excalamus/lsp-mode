@@ -48,7 +48,7 @@
   'lsp-go-gopls-server-args
   "lsp-mode 7.0.1")
 
-(defcustom lsp-go-gopls-server-args nil
+(defcustom lsp-go-gopls-server-args '("-remote=auto")
   "Extra CLI arguments for gopls."
   :type '(repeat string)
   :group 'lsp-go)
@@ -82,12 +82,12 @@ completing function calls."
   'lsp-go-env
   "lsp-mode 7.0.1")
 
-(defcustom lsp-go-env (make-hash-table)
+(defcustom lsp-go-env nil
   "`gopls' has the unusual ability to set environment variables,
   intended to affect the behavior of commands invoked by `gopls'
   on the user's behalf. This variable takes a hash table of env
   var names to desired values."
-  :type '(alist :key-type (string :tag "env var name") :value-type (string :tag "value"))
+  :type '(alist :key-type (symbol :tag "env var name") :value-type (string :tag "value"))
   :group 'lsp-go
   :risky t
   :package-version '(lsp-mode "6.2"))
@@ -97,7 +97,7 @@ completing function calls."
   :link '(url-link "https://github.com/golang/tools/blob/67e49ef2d0f326051e22a4a55bdf9344ae1a8ed8/gopls/doc/settings.md#directoryfilters-string")
   :group 'lsp-go
   :type 'lsp-string-vector
-  :package-version '(lsp-mode "7.1"))
+  :package-version '(lsp-mode "8.0.0"))
 
 (define-obsolete-variable-alias
   'lsp-gopls-hover-kind
@@ -229,10 +229,9 @@ $GOPATH/pkg/mod along with the value of
         (mapcar (lambda (path) (concat (file-remote-p default-directory) path)) library-dirs)
       library-dirs)))
 
-(defcustom lsp-go-link-target "godoc.org"
+(defcustom lsp-go-link-target "pkg.go.dev"
   "Which website to use for displaying Go documentation."
-  :type '(choice (const "godoc.org")
-		 (const "pkg.go.dev")
+  :type '(choice (const "pkg.go.dev")
 		 (string :tag "A custom website"))
   :group 'lsp-go
   :package-version '(lsp-mode "7.0.1"))
@@ -241,13 +240,13 @@ $GOPATH/pkg/mod along with the value of
   "If non-nil, hover documentation includes links."
   :type 'boolean
   :group 'lsp-go
-  :package-version '(lsp-mode "7.1"))
+  :package-version '(lsp-mode "8.0.0"))
 
 (defcustom lsp-go-use-gofumpt nil
   "If non-nil, use gofumpt formatting."
   :type 'boolean
   :group 'lsp-go
-  :package-version '(lsp-mode "7.1"))
+  :package-version '(lsp-mode "8.0.0"))
 
 (defcustom lsp-go-goimports-local ""
   "Equivalent of the goimports -local flag, which puts imports beginning with
@@ -255,7 +254,53 @@ $GOPATH/pkg/mod along with the value of
  path whose imports should be grouped separately."
   :type 'string
   :group 'lsp-go
-  :package-version '(lsp-mode "7.1"))
+  :package-version '(lsp-mode "8.0.0"))
+
+(defcustom lsp-go-analyses nil
+  "Specify analyses that the user would like to enable or disable. A map of the
+  names of analysis passes that should be enabled/disabled. A full list of
+  analyzers that gopls uses can be found at
+  https://github.com/golang/tools/blob/master/gopls/doc/analyzers.md"
+  :type '(alist :key-type (string :tag "analyzer name") :value-type (boolean :tag "value"))
+  :group 'lsp-go
+  :risky t
+  :package-version '(lsp-mode "8.0.0"))
+
+(defcustom lsp-go-import-shortcut "Both"
+  "Specifies whether import statements should link to documentation or go to 
+  definitions."
+  :type '(choice (const "Both")
+                 (const "Link")
+                 (const "Definition"))
+  :group 'lsp-go
+  :risky t
+  :package-version '(lsp-mode "8.0.0"))
+
+(defcustom lsp-go-symbol-matcher "Fuzzy"
+  "Sets the algorithm that is used when finding workspace symbols."
+  :type '(choice (const "Fuzzy")
+                 (const "CaseInsensitive")
+                 (const "CaseSensitive"))
+  :group 'lsp-go
+  :risky t
+  :package-version '(lsp-mode "8.0.0"))
+
+(defcustom lsp-go-symbol-style "Dynamic"
+  "Controls how symbols are qualified in symbol responses.
+
+  'Dynamic' uses whichever qualifier results in the highest scoring match for
+  the given symbol query. Here a 'qualifier' is any '/' or '.' delimited suffix
+  of the fully qualified symbol. i.e. 'to/pkg.Foo.Field' or just 'Foo.Field'.
+
+  'Full' is fully qualified symbols, i.e. 'path/to/pkg.Foo.Field'.
+
+  'Package' is package qualified symbols i.e. 'pkg.Foo.Field'."
+  :type '(choice (const "Dynamic")
+                 (const "Full")
+                 (const "Package"))
+  :group 'lsp-go
+  :risky t
+  :package-version '(lsp-mode "8.0.0"))
 
 (lsp-register-custom-settings
  '(("gopls.usePlaceholders" lsp-go-use-placeholders t)
@@ -267,7 +312,11 @@ $GOPATH/pkg/mod along with the value of
    ("gopls.linksInHover" lsp-go-links-in-hover t)
    ("gopls.gofumpt" lsp-go-use-gofumpt t)
    ("gopls.local" lsp-go-goimports-local)
-   ("gopls.directoryFilters" lsp-go-directory-filters)))
+   ("gopls.directoryFilters" lsp-go-directory-filters)
+   ("gopls.analyses" lsp-go-analyses)
+   ("gopls.importShortcut" lsp-go-import-shortcut)
+   ("gopls.symbolMatcher" lsp-go-symbol-matcher)
+   ("gopls.symbolStyle" lsp-go-symbol-style)))
 
 (lsp-register-client
  (make-lsp-client :new-connection (lsp-stdio-connection
@@ -281,6 +330,8 @@ $GOPATH/pkg/mod along with the value of
                   :after-open-fn (lambda ()
                                    ;; https://github.com/golang/tools/commit/b2d8b0336
                                    (setq-local lsp-completion-filter-on-incomplete nil))))
+
+(lsp-consistency-check lsp-go)
 
 (provide 'lsp-go)
 ;;; lsp-go.el ends here

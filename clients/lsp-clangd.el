@@ -1,6 +1,6 @@
 ;;; lsp-clangd.el --- LSP clients for the C Languages Family -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2020 Daniel MartÃ­n & emacs-lsp maintainers
+;; Copyright (C) 2020 Daniel Martín & emacs-lsp maintainers
 ;; URL: https://github.com/emacs-lsp/lsp-mode
 ;; Keywords: languages, c, cpp, clang
 
@@ -46,6 +46,45 @@
 (declare-function flycheck-error-id "ext:flycheck" (err) t)
 (declare-function flycheck-error-group "ext:flycheck" (err) t)
 (declare-function flycheck-error-message "ext:flycheck" (err) t)
+
+(defcustom lsp-clangd-version "13.0.0"
+  "Clangd version to download.
+It has to be set before `lsp-clangd.el' is loaded and it has to
+be available here: https://github.com/clangd/clangd/releases/"
+  :type 'string
+  :group 'lsp-clangd
+  :package-version '(lsp-mode . "8.0.0"))
+
+(defcustom lsp-clangd-download-url
+  (format (pcase system-type
+            ('darwin "https://github.com/clangd/clangd/releases/download/%s/clangd-mac-%s.zip")
+            ('windows-nt "https://github.com/clangd/clangd/releases/download/%s/clangd-windows-%s.zip")
+            (_ "https://github.com/clangd/clangd/releases/download/%s/clangd-linux-%s.zip"))
+          lsp-clangd-version
+          lsp-clangd-version)
+  "Automatic download url for clangd"
+  :type 'string
+  :group 'lsp-clangd
+  :package-version '(lsp-mode . "8.0.0"))
+
+(defcustom lsp-clangd-binary-path
+  (f-join lsp-server-install-dir (format "clangd/clangd_%s/bin"
+                                         lsp-clangd-version)
+          (pcase system-type
+            ('windows-nt "clangd.exe")
+            (_ "clangd")))
+  "The path to `clangd' binary."
+  :type 'file
+  :group 'lsp-clangd
+  :package-version '(lsp-mode . "8.0.0"))
+
+(lsp-dependency
+ 'clangd
+ `(:download :url lsp-clangd-download-url
+             :decompress :zip
+             :store-path ,(f-join lsp-server-install-dir "clangd" "clangd.zip")
+             :binary-path lsp-clangd-binary-path
+             :set-executable? t))
 
 (defun lsp-cpp-flycheck-clang-tidy--skip-http-headers ()
   "Position point just after HTTP headers."
@@ -179,14 +218,25 @@ This must be set only once after loading the clang client.")
   :risky t
   :type '(repeat string))
 
+(defcustom lsp-clients-clangd-library-directories '("/usr")
+  "List of directories which will be considered to be libraries."
+  :risky t
+  :type '(repeat string)
+  :group 'lsp-clangd
+  :package-version '(lsp-mode . "8.0.1"))
+
 (defun lsp-clients--clangd-command ()
   "Generate the language server startup command."
   (unless lsp-clients--clangd-default-executable
     (setq lsp-clients--clangd-default-executable
-          (or (-first #'executable-find
+          (or (lsp-package-path 'clangd)
+              (-first #'executable-find
                       (-map (lambda (version)
                               (concat "clangd" version))
-                            '("" "-12" "-11" "-10" "-9" "-8" "-7" "-6")))
+                            ;; Prefer `clangd` without a version number appended.
+                            (cl-list* "" (-map
+                                          (lambda (vernum) (format "-%d" vernum))
+                                          (number-sequence 14 6 -1)))))
               (lsp-clients-executable-find "xcodebuild" "-find-executable" "clangd")
               (lsp-clients-executable-find "xcrun" "--find" "clangd"))))
 
@@ -196,9 +246,12 @@ This must be set only once after loading the clang client.")
 (lsp-register-client
  (make-lsp-client :new-connection (lsp-stdio-connection
                                    'lsp-clients--clangd-command)
-                  :major-modes '(c-mode c++-mode objc-mode)
+                  :activation-fn (lsp-activate-on "c" "cpp" "objective-c")
                   :priority -1
-                  :server-id 'clangd))
+                  :server-id 'clangd
+                  :library-folders-fn (lambda (_workspace) lsp-clients-clangd-library-directories)
+                  :download-server-fn (lambda (_client callback error-callback _update?)
+                                        (lsp-package-ensure 'clangd callback error-callback))))
 
 (defun lsp-clangd-join-region (beg end)
   "Apply join-line from BEG to END.
@@ -255,6 +308,8 @@ Only works with clangd."
       (user-error "Could not find other file"))
     (funcall (if new-window #'find-file-other-window #'find-file)
              (lsp--uri-to-path other))))
+
+(lsp-consistency-check lsp-clangd)
 
 (provide 'lsp-clangd)
 ;;; lsp-clangd.el ends here

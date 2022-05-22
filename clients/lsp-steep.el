@@ -41,18 +41,24 @@
           (const "debug"))
   :group 'lsp-steep)
 
-(defcustom lsp-steep-use-bundler t
+(defcustom lsp-steep-use-bundler nil
   "Run Steep using Bunder."
   :type 'boolean
   :safe #'booleanp
   :group 'lsp-steep)
 
+(defcustom lsp-steep-server-path nil
+  "Path of the Steep language server executable.
+If specified, `lsp-steep-use-bundler' is ignored."
+  :type 'file
+  :group 'lsp-steep
+  :package-version '(lsp-mode . "8.0.0"))
+
 (defun lsp-steep--build-command ()
   "Build a command to start the Steep language server."
   (append
-    (if lsp-steep-use-bundler '("bundle" "exec"))
-    '("steep" "langserver")
-    (list (concat "--log-level=" lsp-steep-log-level))))
+   (if (and lsp-steep-use-bundler (not lsp-steep-server-path)) '("bundle" "exec"))
+   (list (or lsp-steep-server-path "steep") "langserver" "--log-level" lsp-steep-log-level)))
 
 (lsp-register-client
  (make-lsp-client
@@ -60,6 +66,8 @@
   :major-modes '(ruby-mode enh-ruby-mode)
   :priority -3
   :server-id 'steep-ls))
+
+(lsp-consistency-check lsp-steep)
 
 (provide 'lsp-steep)
 ;;; lsp-steep.el ends here

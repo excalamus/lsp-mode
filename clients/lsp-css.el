@@ -31,7 +31,7 @@
   "LSP support for CSS."
   :group 'lsp-mode
   :link '(url-link
-          "https://github.com/vscode-langservers/vscode-css-languageserver-bin"))
+          "https://github.com/microsoft/vscode/tree/main/extensions/css-language-features/server"))
 
 (defcustom lsp-css-experimental-custom-data nil
   "A list of JSON file paths that define custom CSS data that
@@ -234,19 +234,21 @@ server."
   (lsp--apply-text-edits (cl-caddr arguments?) 'code-action))
 
 (lsp-dependency 'css-languageserver
-                '(:system "css-languageserver")
-                '(:npm :package "vscode-css-languageserver-bin"
-                       :path "css-languageserver"))
+                '(:system "vscode-css-language-server")
+                '(:npm :package "vscode-langservers-extracted"
+                       :path "vscode-css-language-server"))
 
 (lsp-register-client
  (make-lsp-client
   :new-connection (lsp-stdio-connection #'lsp-css--server-command)
-  :major-modes '(css-mode less-mode less-css-mode sass-mode scss-mode)
+  :activation-fn (lsp-activate-on "css" "scss" "sass" "less")
   :priority -1
   :action-handlers (lsp-ht ("_css.applyCodeAction" #'lsp-css--apply-code-action))
   :server-id 'css-ls
   :download-server-fn (lambda (_client callback error-callback _update?)
                         (lsp-package-ensure 'css-languageserver callback error-callback))))
+
+(lsp-consistency-check lsp-css)
 
 (provide 'lsp-css)
 ;;; lsp-css.el ends here

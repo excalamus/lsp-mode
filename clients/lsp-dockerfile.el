@@ -32,7 +32,7 @@
 (defgroup lsp-dockerfile nil
   "Dockerfile LSP client, provided by the Dockerfile Language Server."
   :group 'lsp-mode
-  :version "7.1"
+  :version "8.0.0"
   :link '(url-link "https://github.com/rcjsuen/dockerfile-language-server-nodejs"))
 
 (defcustom lsp-dockerfile-language-server-command
@@ -59,6 +59,8 @@
                   :download-server-fn (lambda (_client callback error-callback _update?)
                                         (lsp-package-ensure 'docker-langserver
                                                             callback error-callback))))
+
+(lsp-consistency-check lsp-dockerfile)
 
 (provide 'lsp-dockerfile)
 ;;; lsp-dockerfile.el ends here

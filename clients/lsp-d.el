@@ -25,11 +25,17 @@
 ;;; Code:
 
 (require 'lsp-mode)
+(require 'ht)
 
 (lsp-register-client
  (make-lsp-client :new-connection (lsp-stdio-connection "serve-d")
                   :major-modes '(d-mode)
+                  :notification-handlers
+                  (ht ("coded/changedSelectedWorkspace" #'ignore)
+                      ("coded/initDubTree" #'ignore))
                   :server-id 'serve-d))
+
+(lsp-consistency-check lsp-d)
 
 (provide 'lsp-d)
 ;;; lsp-d.el ends here

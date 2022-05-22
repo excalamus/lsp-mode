@@ -1,3 +1,8 @@
+---
+author: yyoncho
+disqus: emacs-lsp
+root_file: docs/manual-language-docs/lsp-rust-analyzer.md
+---
 ## Server note
 
 NOTE: If you are using `rustic-mode`, you have to change `rustic-lsp-server` instead of `lsp-rust-server`, since it also supports eglot as a lightweight alternative to lsp-mode.
@@ -5,29 +10,6 @@ NOTE: If you are using `rustic-mode`, you have to change `rustic-lsp-server` ins
 - `lsp-rust-server` Choose LSP server (default is rust-analyzer)
 
 - `lsp-rust-switch-server` Switch priorities of lsp servers
-
-## RLS
-
-### Customization
-
-This is an incomplete list of the available options
-
-- `lsp-rust-rls-server-command` change command to start RLS
-
-- `lsp-rust-show-hover-context` turn off hover tooltips
-
-## rustfmt
-
-Code formatting with [rustfmt](https://github.com/rust-lang/rustfmt) can be configured with:
-
-`lsp-rust-rustfmt-path` change default path for rustfmt executable
-
-To enable automatic code format on save, add this to your `init.el` (`rust-mode` is assumed to be installed):
-
-```
-(add-hook 'before-save-hook (lambda () (when (eq 'rust-mode major-mode)
-                                           (lsp-format-buffer))))
-```
 
 ## rust-analyzer
 
@@ -61,6 +43,8 @@ after:
 
 `lsp-rust-analyzer-inlay-hints-mode` enables displaying of inlay hints
 
+Additionally, `lsp-rust-analyzer-server-display-inlay-hints` must be set to `t` in order for inlay hints to render.
+
 NOTE: the inlay hints interact badly with the lsp-ui sideline, because it doesn't seem to consider the overlays in its width calculation, which often leads to lines wrapping around.
 
 ![](../examples/lsp-rust-analyzer-inlay-hints.png)
@@ -81,25 +65,51 @@ Get a list of possible auto import candidates with `lsp-execute-code-action`
 
 ![](../examples/lsp-rust-analyzer-auto-import.png)
 
+### Snippet insertion/refactor
+
+To support refactorings that require snippet insertion(eg. generating
+derive clause etc), make sure that you have enabled `yasnippet` and
+`yas-minor-mode`. If you are using `use-package`, you can do something
+like this:
+
+``` emacs-lisp
+(use-package yasnippet
+  :ensure t
+  :hook ((lsp-mode . yas-minor-mode)))
+```
+
 ### Open Cargo.toml
 
 `lsp-rust-analyzer-open-cargo-toml` opens the Cargo.toml closest to the current file. Calling it with a universal argument will open the Cargo.toml in another window.
 
-Corresponds to [the rust-analyzer LSP extension](https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/dev/lsp-extensions.md#open-cargotoml) 
+Corresponds to [the rust-analyzer LSP extension](https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/dev/lsp-extensions.md#open-cargotoml)
 
-![](./manual-language-docs/lsp-rust-analyzer-open-cargo-toml.gif)
+![](../examples/lsp-rust-analyzer-open-cargo-toml.gif)
+
+### Open external documentation
+
+`lsp-rust-analyzer-open-external-docs` opens external documentation related to the current position in a browser.
+
+Corresponds to [the rust-analyzer LSP extension](https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/dev/lsp-extensions.md#open-external-documentation)
 
 ### Find and execute tests related to current position
 
 `lsp-rust-analyzer-related-tests` find all tests related to the current position, asks for user completion and executes the selected test in a compilation buffer.
 
-Corresponds to [the rust-analyzer LSP extension](https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/dev/lsp-extensions.md#related-tests) 
+Corresponds to [the rust-analyzer LSP extension](https://github.com/rust-analyzer/rust-analyzer/blob/master/docs/dev/lsp-extensions.md#related-tests)
 
-In the example below, first you see that
-   + On the left, the function `check_infer` is defined, on the right another file is opened with many test functions, some of which call `check_infer`. With the cursor on `check_infer`, call `lsp-rust-analyzer-related-tests` and select `infer_pattern_match_slice` with fuzzy matching. The test is executed on the right with compilation major mode
-   + Move the cursor to `fn ellipsize` and attempt to find related tests to no avail. Confirm that the function is indeed untested by using swiper and finding one place in the file, where the function is called
+In the example below, first you see that:
+   + On the left, the function `check_infer` is defined, on the right another
+     file is opened with many test functions, some of which call `check_infer`.
+     With the cursor on `check_infer`, call `lsp-rust-analyzer-related-tests`
+     and select `infer_pattern_match_slice` with fuzzy matching. The test is
+     executed on the right with compilation major mode
 
-![](./manual-language-docs/lsp-rust-analyzer-find-related-tests.gif)
+   + Move the cursor to `fn ellipsize` and attempt to find related tests to no
+     avail. Confirm that the function is indeed untested by using swiper and
+     finding one place in the file, where the function is called
+
+![](../examples/lsp-rust-analyzer-find-related-tests.gif)
 
 ### Caveats
 

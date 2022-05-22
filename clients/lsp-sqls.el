@@ -56,7 +56,7 @@
 (defcustom lsp-sqls-timeout 0.5
   "Timeout to use for `sqls' requests."
   :type 'number
-  :package-version '(lsp-mode . "7.1.0"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-sqls-connections nil
   "The connections to the SQL server(s)."
@@ -85,8 +85,10 @@
       (erase-buffer)
       (insert result))))
 
-(defun lsp-sql-execute-query (&optional command)
-  "Execute COMMAND on selected region/whole buffer against current database."
+(defun lsp-sql-execute-query (&optional command start end)
+  "Execute COMMAND on buffer text against current database.
+Buffer text is between START and END.  If START and END are nil,
+use the current region if set, otherwise the entire buffer."
   (interactive)
   (lsp-sqls--show-results
    (lsp-request
@@ -99,13 +101,22 @@
           :timeout lsp-sqls-timeout
           :range (list
                   :start (lsp--point-to-position
-                          (if (use-region-p)
-                              (region-beginning)
-                            (point-min)))
+                          (cond
+                           (start start)
+                           ((use-region-p) (region-beginning))
+                            (t (point-min))))
                   :end (lsp--point-to-position
-                        (if (use-region-p)
-                            (region-end)
-                          (point-max))))))))
+                        (cond
+                         (end end)
+                         ((use-region-p) (region-end))
+                         (t (point-max)))))))))
+
+(defun lsp-sql-execute-paragraph (&optional command)
+  "Execute COMMAND on paragraph against current database."
+  (interactive)
+  (let ((start (save-excursion (backward-paragraph) (point)))
+        (end (save-excursion (forward-paragraph) (point))))
+    (lsp-sql-execute-query command start end)))
 
 (defun lsp-sql-show-databases (&optional _command)
   "Show databases."
@@ -159,7 +170,8 @@
  (make-lsp-client :new-connection (lsp-stdio-connection #'lsp-sqls--make-launch-cmd)
                   :major-modes '(sql-mode)
                   :priority -1
-                  :action-handlers (ht ("executeQuery" #'lsp-sql-execute-query)
+                  :action-handlers (ht ("executeParagraph" #'lsp-sql-execute-paragraph)
+                                       ("executeQuery" #'lsp-sql-execute-query)
                                        ("showDatabases" #'lsp-sql-show-databases)
                                        ("showSchemas" #'lsp-sql-show-schemas)
                                        ("showConnections" #'lsp-sql-show-connections)
@@ -172,6 +184,8 @@
                                         (lsp:set-server-capabilities-execute-command-provider? t))
                                     (with-lsp-workspace workspace
                                       (lsp-sqls-setup-workspace-configuration)))))
+
+(lsp-consistency-check lsp-sqls)
 
 (provide 'lsp-sqls)
 ;;; lsp-sqls.el ends here

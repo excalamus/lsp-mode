@@ -38,7 +38,7 @@
 (defcustom lsp-racket-langserver-command '("racket" "--lib" "racket-langserver")
   "Command to start the server."
   :type 'string
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (lsp-register-client
  (make-lsp-client :new-connection (lsp-stdio-connection (lambda () lsp-racket-langserver-command))
@@ -57,7 +57,7 @@
 (defcustom lsp-racket-language-server-path "racket-language-server"
   "Executable path for the server."
   :type 'string
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defun lsp-racket-language-server-colorize-handler (&rest _args)
   "Handler for the colorize notification."
@@ -70,6 +70,8 @@
                   :priority -1
                   :notification-handlers (ht ("racket/colorize" #'lsp-racket-language-server-colorize-handler))
                   :server-id 'racket-language-server))
+
+(lsp-consistency-check lsp-racket)
 
 (provide 'lsp-racket)
 ;;; lsp-racket.el ends here

@@ -31,7 +31,7 @@
   :tag "LSP Headerline")
 
 (defcustom lsp-headerline-breadcrumb-segments '(path-up-to-project file symbols)
-  "Face used on breadcrumb text on modeline."
+  "Segments used in breadcrumb text on headerline."
   :type '(repeat
           (choice (const :tag "Include the project name." project)
                   (const :tag "Include the open file name." file)
@@ -48,7 +48,7 @@
   "If non-nil, apply different face on the breadcrumb based on the errors."
   :type 'boolean
   :group 'lsp-headerline
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defface lsp-headerline-breadcrumb-separator-face '((t :inherit shadow :height 0.8))
   "Face used for breadcrumb separator on headerline."
@@ -259,7 +259,7 @@ PATH is the current folder to be checked."
 
 (defun lsp-headerline--build-file-string ()
   "Build the file-segment string for the breadcrumb."
-  (let* ((file-path (buffer-file-name))
+  (let* ((file-path (or (buffer-file-name) ""))
          (filename (f-filename file-path)))
     (if-let ((file-ext (f-ext file-path)))
         (concat (lsp-icons-get-by-file-ext file-ext 'headerline-breadcrumb)
@@ -417,6 +417,11 @@ PATH is the current folder to be checked."
   :global nil
   (cond
    (lsp-headerline-breadcrumb-mode
+    ;; make sure header-line-format, if non-nil, is a list.  as
+    ;; mode-line-format says: "The value may be nil, a string, a
+    ;; symbol or a list."
+    (unless (listp header-line-format)
+      (setq header-line-format (list header-line-format)))
     (add-to-list 'header-line-format '(t (:eval lsp-headerline--string)))
 
     (add-hook 'xref-after-jump-hook #'lsp-headerline--check-breadcrumb nil t)
@@ -466,6 +471,8 @@ PATH is the current folder to be checked."
             (lsp--info "Symbol not found for position %s" symbol-position))
         (lsp--info "Server does not support breadcrumb."))
     (lsp--info "Call this function with a number representing the symbol position on breadcrumb")))
+
+(lsp-consistency-check lsp-headerline)
 
 (provide 'lsp-headerline)
 ;;; lsp-headerline.el ends here

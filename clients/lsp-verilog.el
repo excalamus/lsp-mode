@@ -36,7 +36,7 @@
   "Settings for the SystemVerilog language server client."
   :group 'lsp-mode
   :link '(url-link "https://github.com/imc-trading/svlangserver")
-  :package-version '(lsp-mode . "7.1"))
+  :package-version '(lsp-mode . "8.0.0"))
 
 (defcustom lsp-clients-svlangserver-includeIndexing '["**/*.{sv,svh}"]
   "Files included for indexing (glob pattern)"
@@ -128,6 +128,14 @@
   :type 'string
   :safe (lambda (x) (stringp x)))
 
+(defun lsp-clients-svlangserver-build-index ()
+  (interactive)
+  (lsp-send-execute-command "systemverilog.build_index"))
+
+(defun lsp-clients-svlangserver-report-hierarchy (container-name)
+  (interactive (list (read-string "Module/interface: " (cond ((use-region-p) (buffer-substring (region-beginning) (region-end))) (t "")))))
+  (lsp-send-execute-command "systemverilog.report_hierarchy" (vector container-name)))
+
 (lsp-dependency 'svlangserver
                 '(:system "svlangserver"))
 
@@ -179,6 +187,8 @@
                   :language-id "verilog"
     	          :priority -2
                   :server-id 'lsp-verilog))
+
+(lsp-consistency-check lsp-verilog)
 
 (provide 'lsp-verilog)
 ;;; lsp-verilog.el ends here

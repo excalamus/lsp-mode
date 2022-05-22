@@ -1,3 +1,6 @@
+---
+root_file: docs/page/adding-new-language.md
+---
 # Adding support for languages
 
 ## Registering server
@@ -26,8 +29,23 @@ corresponding mode -\> language id - in this case `(python-mode .
 
 `lsp-mode` is using `lsp-language-id-configuration` to determine what is the
 buffer language. When the `major-mode` is not sufficient to determine the
-language (e.g. `web-mode` is used for `javascript` and for `html`) you can put
-regex.
+language (e.g. `web-mode` is used for `javascript`, `html`, and `css`) you can put regex.
+
+Here's an example of how to set up a custom language server in your `init.el` file:
+
+```elisp
+;; Use shopify-cli / theme-check-language-server for Shopify's liquid syntax
+(with-eval-after-load 'lsp-mode
+  (add-to-list 'lsp-language-id-configuration
+    '(shopify-mode . "shopify"))
+
+  (lsp-register-client
+    (make-lsp-client :new-connection (lsp-stdio-connection "theme-check-language-server")
+                     :activation-fn (lsp-activate-on "shopify")
+                     :server-id 'theme-check)))
+```
+
+**Note:** This example assumes that you've already set up a major mode of your own either by [deriving it](https://www.gnu.org/software/emacs/manual/html_node/elisp/Derived-Modes.html) from `web-mode` or perhaps by writing it yourself.
 
 If the language server supports environment variables to control
 additional behavior, you can register that by using the
@@ -74,21 +92,17 @@ client has been loaded.
 
 `lsp-mode` provides tools to bridge emacs `defcustom` as a language
 configuration sections properties(see [specification
-workspace/configuration](https://microsoft.github.io/language-server-protocol/specification#workspace_configuration)).
-In addition you may use `lsp-generate-settings` from [Generate Settings
-script](https://github.com/emacs-lsp/lsp-mode/blob/master/scripts/lsp-generate-settings.el)
-to generate `defcustom` from `package.json` VScode plugin manifest.
-Example:
+workspace/configuration](https://microsoft.github.io/language-server-protocol/specification#workspace_configuration)). In addition you may use `lsp-generate-settings`
+from [Generate Settings script](https://github.com/emacs-lsp/lsp-mode/blob/master/scripts/lsp-generate-settings.el) to generate `lsp-defcustom` from `package.json`
+VScode plugin manifest. Example:
 
 ``` elisp
-(defcustom lsp-foo-language-server-property "bar"
+(defcustom-lsp lsp-foo-language-server-property "bar"
   "Demo property."
   :group 'foo-ls
-  :risky t)
+  :lsp-path "foo.section.property")
 
-(lsp-register-custom-settings '(("foo.section.property" lsp-foo-language-server-property)))
-
-(lsp-configuration-section  "foo")
+(lsp-configuration-section "foo")
 ;; =>  (("foo" ("settings" ("property" . "bar"))))
 ```
 
@@ -96,4 +110,3 @@ Example:
 
   - Add the new language server to the [lsp-clients.json](https://github.com/emacs-lsp/lsp-mode/blob/master/docs/lsp-clients.json) file sorted by the `full-name` key alphabetically.
   - Create a new navigation entry in [mkdocs.yml](https://github.com/emacs-lsp/lsp-mode/blob/master/mkdocs.yml#L4) file.
-
